@@ -1,0 +1,41 @@
+/**
+ * Shared Enums
+ * Enum definitions used across all packages
+ */
+
+export enum UserRole {
+  USER = 'USER',
+  REVIEWER = 'REVIEWER',
+}
+
+export enum Difficulty {
+  EASY = 'EASY',
+  MEDIUM = 'MEDIUM',
+  HARD = 'HARD',
+}
+
+export enum TaskState {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  IN_REVIEW = 'IN_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CHANGES_REQUESTED = 'CHANGES_REQUESTED',
+}
+
+export enum ReviewDecision {
+  APPROVE = 'APPROVE',
+  REJECT = 'REJECT',
+  REQUEST_CHANGES = 'REQUEST_CHANGES',
+}
+
+export enum AuditAction {
+  TASK_CREATED = 'TASK_CREATED',
+  TASK_UPDATED = 'TASK_UPDATED',
+  TASK_SUBMITTED = 'TASK_SUBMITTED',
+  TASK_APPROVED = 'TASK_APPROVED',
+  TASK_REJECTED = 'TASK_REJECTED',
+  TASK_CHANGES_REQUESTED = 'TASK_CHANGES_REQUESTED',
+  REVIEW_STARTED = 'REVIEW_STARTED',
+  REVIEW_SUBMITTED = 'REVIEW_SUBMITTED',
+}

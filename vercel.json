@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm install --include=dev && npx turbo run build --filter=@repo/frontend",
+  "outputDirectory": ".next",
+  "installCommand": "npm install --include=dev"
+}

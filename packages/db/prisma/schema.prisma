@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  USER
+  REVIEWER
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum TaskState {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum ReviewDecision {
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  authoredTasks  Task[]   @relation("TaskAuthor")
+  reviewedTasks  Task[]   @relation("TaskReviewer")
+  reviews        Review[]
+  
+  @@map("users")
+}
+
+model Task {
+  id          String      @id @default(cuid())
+  title       String
+  instruction String      // The prompt given to the agent
+  difficulty  Difficulty
+  categories  String      // Comma-separated categories
+  maxAgentTimeoutSec Int
+  maxTestTimeoutSec  Int
+  
+  // File contents stored as text
+  taskYaml          String?  // Content of task.yaml
+  dockerComposeYaml String?  // Content of docker-compose.yaml
+  solutionSh        String?  // Content of solution.sh
+  runTestsSh        String?  // Content of run-tests.sh
+  testsJson         String?  // JSON representation of tests/ directory
+  
+  state       TaskState  @default(DRAFT)
+  authorId    String
+  reviewerId  String?    // Current reviewer (if IN_REVIEW)
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Relations
+  author      User       @relation("TaskAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  reviewer    User?      @relation("TaskReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviews     Review[]
+  
+  @@index([authorId])
+  @@index([state])
+  @@index([reviewerId])
+  @@map("tasks")
+}
+
+model Review {
+  id          String         @id @default(cuid())
+  taskId      String
+  reviewerId  String
+  decision    ReviewDecision
+  comment     String?        // Reviewer's comment/feedback
+  createdAt   DateTime       @default(now())
+  
+  // Relations
+  task        Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewer    User           @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId])
+  @@index([reviewerId])
+  @@map("reviews")
+}
+
+enum AuditAction {
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_SUBMITTED
+  TASK_APPROVED
+  TASK_REJECTED
+  TASK_CHANGES_REQUESTED
+  REVIEW_STARTED
+  REVIEW_SUBMITTED
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  action      AuditAction
+  entityType  String      // e.g., "task", "review"
+  entityId    String      // ID of the affected entity
+  userId      String
+  userName    String?     // Denormalized for easier display
+  userEmail   String?     // Denormalized for easier display
+  metadata    Json?       // Additional context (old values, new values, etc.)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+  
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model TaskHistory {
+  id          String      @id @default(cuid())
+  taskId      String
+  version     Int         // Version number (increments on each update)
+  state       TaskState
+  
+  // Snapshot of task data at this version
+  title       String
+  instruction String
+  difficulty  Difficulty
+  categories  String
+  maxAgentTimeoutSec Int
+  maxTestTimeoutSec  Int
+  taskYaml          String?
+  dockerComposeYaml String?
+  solutionSh        String?
+  runTestsSh        String?
+  testsJson         String?
+  
+  // Metadata
+  changedBy   String      // User ID who made the change
+  changeType  String      // e.g., "created", "updated", "submitted"
+  createdAt   DateTime    @default(now())
+  
+  @@index([taskId, version])
+  @@index([taskId, createdAt])
+  @@map("task_history")
+}
