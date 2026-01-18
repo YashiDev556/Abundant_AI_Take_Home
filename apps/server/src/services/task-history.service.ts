@@ -135,21 +135,63 @@ export class TaskHistoryService {
 
   /**
    * Get the latest version before a resubmission
+   * Finds the most recent version with actual content changes
    */
   static async getLatestBeforeResubmission(taskId: string) {
     const versions = await prisma.taskHistory.findMany({
       where: { taskId },
       orderBy: { version: 'desc' },
-      take: 2,
     })
 
     if (versions.length < 2) {
       return null
     }
 
-    return {
-      previous: versions[1],
-      current: versions[0],
+    const fieldsToCompare = [
+      'title',
+      'instruction',
+      'difficulty',
+      'categories',
+      'maxAgentTimeoutSec',
+      'maxTestTimeoutSec',
+      'taskYaml',
+      'dockerComposeYaml',
+      'solutionSh',
+      'runTestsSh',
+      'testsJson',
+    ]
+
+    // Find two versions with actual content differences
+    // Start from most recent and work backwards
+    const current = versions[0]
+    
+    for (let i = 1; i < versions.length; i++) {
+      const previous = versions[i]
+      
+      // Check if there are actual content differences
+      const hasContentChanges = fieldsToCompare.some(field => {
+        const oldVal = previous[field as keyof typeof previous]
+        const newVal = current[field as keyof typeof current]
+        return oldVal !== newVal
+      })
+
+      if (hasContentChanges) {
+        return {
+          previous,
+          current,
+        }
+      }
     }
+
+    return null
+  }
+
+  /**
+   * Check if a task has any content changes in its history
+   * Useful for determining if the "Changes" tab should be shown
+   */
+  static async hasContentChanges(taskId: string): Promise<boolean> {
+    const result = await this.getLatestBeforeResubmission(taskId)
+    return result !== null
   }
 }

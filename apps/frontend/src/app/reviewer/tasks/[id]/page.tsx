@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { reviewerApi } from '@/lib/api-client'
+import { reviewerApi, api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ReviewModal, ConfirmModal } from '@/components/modals'
+import { DiffViewer } from '@/components/ui/diff-viewer'
 import {
   ArrowLeft,
   Play,
@@ -29,6 +30,7 @@ import {
   Copy,
   Check,
   ClipboardCheck,
+  GitCompare,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -37,6 +39,9 @@ const getStateBadgeClass = (state: string) => {
   const classes: Record<string, string> = {
     SUBMITTED: 'badge-submitted',
     IN_REVIEW: 'badge-in-review',
+    APPROVED: 'badge-approved',
+    REJECTED: 'badge-rejected',
+    CHANGES_REQUESTED: 'badge-changes',
   }
   return classes[state] || 'badge-submitted'
 }
@@ -95,6 +100,13 @@ export default function ReviewerTaskDetailPage() {
     queryFn: () => reviewerApi.getTask(taskId),
   })
 
+  // Fetch the latest diff (changes since last review)
+  const { data: diffData, isLoading: isDiffLoading } = useQuery({
+    queryKey: ['reviewer', 'tasks', taskId, 'diff'],
+    queryFn: () => api.audit.getLatestTaskDiff(taskId),
+    enabled: !!data, // Only fetch when task is loaded
+  })
+
   const startReviewMutation = useMutation({
     mutationFn: () => reviewerApi.startReview(taskId),
     onSuccess: () => {
@@ -142,6 +154,8 @@ export default function ReviewerTaskDetailPage() {
 
   const canStartReview = task.state === 'SUBMITTED'
   const canSubmitReview = task.state === 'IN_REVIEW'
+  const hasChanges = diffData && diffData.changes && diffData.changes.length > 0
+  const isResubmission = hasChanges && (task.state === 'SUBMITTED' || task.state === 'IN_REVIEW')
 
   const files = [
     { name: 'task.yaml', content: task.taskYaml },
@@ -203,6 +217,22 @@ export default function ReviewerTaskDetailPage() {
         </div>
       </div>
 
+      {/* Resubmission Banner - Shows when task has changes from previous review */}
+      {isResubmission && (
+        <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-teal-500/10">
+            <GitCompare className="size-5 text-teal-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-teal-400">Resubmission with Changes</p>
+            <p className="text-sm text-muted-foreground">
+              The author has made {diffData?.changes.length} change{diffData?.changes.length !== 1 ? 's' : ''} since the last review. 
+              Check the "Changes" tab to see what was updated.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Status Banner for IN_REVIEW */}
       {task.state === 'IN_REVIEW' && (
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 p-4 flex items-center gap-3">
@@ -221,6 +251,51 @@ export default function ReviewerTaskDetailPage() {
           >
             Submit Review
           </Button>
+        </div>
+      )}
+
+      {/* Status Banner for APPROVED */}
+      {task.state === 'APPROVED' && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <CheckCircle2 className="size-5 text-emerald-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-emerald-400">Task Approved</p>
+            <p className="text-sm text-muted-foreground">
+              This task has been approved and is ready for use.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Status Banner for REJECTED */}
+      {task.state === 'REJECTED' && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-red-500/10">
+            <XCircle className="size-5 text-red-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-red-400">Task Rejected</p>
+            <p className="text-sm text-muted-foreground">
+              This task has been rejected. The author may resubmit with changes.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Status Banner for CHANGES_REQUESTED */}
+      {task.state === 'CHANGES_REQUESTED' && (
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-orange-500/10">
+            <AlertTriangle className="size-5 text-orange-400" />
+          </div>
+          <div className="flex-1">
+            <p className="font-medium text-orange-400">Changes Requested</p>
+            <p className="text-sm text-muted-foreground">
+              Changes have been requested. Waiting for the author to update and resubmit.
+            </p>
+          </div>
         </div>
       )}
 
@@ -245,6 +320,12 @@ export default function ReviewerTaskDetailPage() {
             <TabsTrigger value="history" className="gap-2">
               <Clock className="size-4" />
               History ({task.reviews.length})
+            </TabsTrigger>
+          )}
+          {diffData && (
+            <TabsTrigger value="changes" className="gap-2">
+              <GitCompare className="size-4" />
+              Changes
             </TabsTrigger>
           )}
         </TabsList>
@@ -384,6 +465,27 @@ export default function ReviewerTaskDetailPage() {
                 )
               })}
             </div>
+          </TabsContent>
+        )}
+
+        {/* Changes Tab - Shows diff between versions */}
+        {diffData && (
+          <TabsContent value="changes" className="mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <GitCompare className="size-5" />
+                  Recent Changes
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DiffViewer
+                  changes={diffData.changes}
+                  fromVersion={diffData.fromVersion}
+                  toVersion={diffData.toVersion}
+                />
+              </CardContent>
+            </Card>
           </TabsContent>
         )}
       </Tabs>

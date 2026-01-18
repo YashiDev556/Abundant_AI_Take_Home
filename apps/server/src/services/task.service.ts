@@ -238,4 +238,97 @@ export class TaskService {
 
     return tasks as unknown as Task[]
   }
+
+  /**
+   * Get tasks that a reviewer has reviewed (APPROVED, REJECTED, CHANGES_REQUESTED)
+   * Shows tasks where the reviewer has submitted a review
+   */
+  static async getReviewerHistory(reviewerId: string, limit?: number): Promise<Task[]> {
+    const tasks = await prisma.task.findMany({
+      where: {
+        OR: [
+          // Tasks where this reviewer is assigned
+          { reviewerId },
+          // Tasks where this reviewer has submitted a review
+          {
+            reviews: {
+              some: {
+                reviewerId,
+              },
+            },
+          },
+        ],
+        state: {
+          in: [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED],
+        },
+      },
+      orderBy: { updatedAt: 'desc' }, // Most recently reviewed first
+      include: TASK_INCLUDE_LIGHT,
+      ...(limit && { take: limit }),
+    })
+
+    return tasks as unknown as Task[]
+  }
+
+  /**
+   * Get all tasks visible to a reviewer (both pending and history)
+   * filter: 'pending' | 'history' | 'all'
+   */
+  static async getReviewerTasks(
+    reviewerId: string, 
+    filter: 'pending' | 'history' | 'all' = 'all',
+    limit?: number
+  ): Promise<Task[]> {
+    let stateFilter: TaskState[]
+    
+    switch (filter) {
+      case 'pending':
+        stateFilter = [TaskState.SUBMITTED, TaskState.IN_REVIEW]
+        break
+      case 'history':
+        stateFilter = [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED]
+        break
+      case 'all':
+      default:
+        stateFilter = [
+          TaskState.SUBMITTED, 
+          TaskState.IN_REVIEW,
+          TaskState.APPROVED, 
+          TaskState.REJECTED, 
+          TaskState.CHANGES_REQUESTED
+        ]
+    }
+
+    // For pending tasks, show all submitted/in_review tasks
+    // For history/all, include tasks where reviewer has a review
+    const whereClause = filter === 'pending' 
+      ? { state: { in: stateFilter } }
+      : {
+          OR: [
+            // All pending tasks (visible to any reviewer)
+            { state: { in: [TaskState.SUBMITTED, TaskState.IN_REVIEW] } },
+            // Tasks this reviewer has reviewed
+            {
+              reviews: {
+                some: { reviewerId },
+              },
+              state: { in: [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED] },
+            },
+            // Tasks assigned to this reviewer
+            {
+              reviewerId,
+              state: { in: [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED] },
+            },
+          ],
+        }
+
+    const tasks = await prisma.task.findMany({
+      where: whereClause,
+      orderBy: { updatedAt: 'desc' },
+      include: TASK_INCLUDE_LIGHT,
+      ...(limit && { take: limit }),
+    })
+
+    return tasks as unknown as Task[]
+  }
 }

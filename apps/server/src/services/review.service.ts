@@ -203,7 +203,7 @@ export class ReviewService {
   /**
    * Get a task for review (with validation)
    */
-  static async getTaskForReview(taskId: string): Promise<Task> {
+  static async getTaskForReview(taskId: string, reviewerId?: string): Promise<Task> {
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       include: TASK_INCLUDE_FULL,
@@ -213,10 +213,22 @@ export class ReviewService {
       throw new NotFoundError('Task')
     }
 
-    // Check if task is reviewable
-    if (!isTaskReviewable(task.state as TaskState)) {
+    // Check if task is reviewable OR if this reviewer has previously reviewed it
+    const isReviewable = isTaskReviewable(task.state as TaskState)
+    const hasReviewedIt = reviewerId && task.reviews?.some(
+      (r: any) => r.reviewerId === reviewerId
+    )
+    const isAssignedReviewer = reviewerId && task.reviewerId === reviewerId
+    const isCompletedState = [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED]
+      .includes(task.state as TaskState)
+    
+    // Allow access if:
+    // 1. Task is in reviewable state (SUBMITTED or IN_REVIEW)
+    // 2. Reviewer has previously reviewed this task
+    // 3. Reviewer is assigned to this task (even if completed)
+    if (!isReviewable && !hasReviewedIt && !(isAssignedReviewer && isCompletedState)) {
       throw new BadRequestError(
-        `Task is not in a reviewable state. Current state: ${task.state}`
+        `Task is not in a reviewable state and you haven't reviewed it. Current state: ${task.state}`
       )
     }
 

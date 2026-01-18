@@ -17,7 +17,12 @@ import {
   UserResponse,
 } from '@repo/types'
 
-const API_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:4000'
+// Use relative paths for Next.js API routes (same origin)
+// Only use external server URL if explicitly set AND we're not in a browser environment
+// In browser, always use relative paths for Next.js API routes
+const API_URL = typeof window === 'undefined' 
+  ? (process.env.NEXT_PUBLIC_SERVER_URL || '')
+  : '' // Always use relative paths in browser
 
 // ==================== Core API Client ====================
 
@@ -70,18 +75,45 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`
     }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: 'include', // Include cookies for Clerk session (fallback)
-    })
+    // Use relative path if baseUrl is empty (Next.js API routes)
+    // Otherwise use full URL (external Express server)
+    const url = this.baseUrl ? `${this.baseUrl}${endpoint}` : endpoint
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }))
-      throw new Error(error.error || `HTTP error! status: ${response.status}`)
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include', // Include cookies for Clerk session (fallback)
+      })
+
+      if (!response.ok) {
+        // Try to parse error response
+        let errorMessage = `HTTP error! status: ${response.status}`
+        try {
+          const error = await response.json()
+          errorMessage = error.error || error.message || errorMessage
+        } catch {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      return response.json()
+    } catch (error) {
+      // Network errors or fetch failures
+      if (error instanceof TypeError) {
+        // More specific error messages
+        if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
+          // This usually means the API route crashed or returned an invalid response
+          throw new Error('Network error: Failed to connect to server. The API route may be experiencing issues. Please check the server logs.')
+        }
+        if (error.message.includes('NetworkError') || error.message.includes('Network request failed')) {
+          throw new Error('Network error: Failed to connect to server. Please check your connection and try again.')
+        }
+      }
+      throw error
     }
-
-    return response.json()
   }
 
   /**
@@ -172,8 +204,15 @@ class TasksService {
 class ReviewerService {
   constructor(private client: ApiClient) {}
 
-  async listTasks(options?: { limit?: number }): Promise<Task[]> {
-    const queryParams = options?.limit ? `?limit=${options.limit}` : ''
+  async listTasks(options?: { 
+    limit?: number
+    filter?: 'pending' | 'history' | 'all'
+  }): Promise<Task[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) params.set('limit', String(options.limit))
+    if (options?.filter) params.set('filter', options.filter)
+    const queryString = params.toString()
+    const queryParams = queryString ? `?${queryString}` : ''
     const response = await this.client.get<TasksResponse>(`/api/reviewer/tasks${queryParams}`)
     return response.tasks
   }
@@ -281,7 +320,7 @@ export const tasksApi = {
 }
 
 export const reviewerApi = {
-  listTasks: (options?: { limit?: number }) => api.reviewer.listTasks(options),
+  listTasks: (options?: { limit?: number; filter?: 'pending' | 'history' | 'all' }) => api.reviewer.listTasks(options),
   getTask: (id: string) => api.reviewer.getTask(id),
   startReview: (id: string) => api.reviewer.startReview(id),
   submitReview: (id: string, decision: ReviewDecision, comment?: string) =>

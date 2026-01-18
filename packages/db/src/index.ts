@@ -1,4 +1,6 @@
-import { PrismaClient } from './generated'
+// Import PrismaClient from default location
+// Using default output location for better Next.js/Vercel compatibility
+import { PrismaClient } from '@prisma/client'
 
 // Prisma client singleton
 const globalForPrisma = globalThis as unknown as {
@@ -36,4 +38,5 @@ export const prisma =
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
-export * from './generated'
+// Re-export everything from Prisma client
+export * from '@prisma/client'

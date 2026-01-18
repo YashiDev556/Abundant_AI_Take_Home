@@ -3,10 +3,11 @@
   "ui": "tui",
   "globalDependencies": ["**/.env.*local"],
   "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**", ".turbo/**", "apps/frontend/.next/**"]
-    },
+      "build": {
+        "dependsOn": ["^build"],
+        "outputs": [".next/**", "dist/**", ".turbo/**", "apps/frontend/.next/**", "node_modules/.prisma/**"],
+        "env": ["DATABASE_URL", "DIRECT_URL", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "CLERK_SECRET_KEY"]
+      },
     "dev": {
       "cache": false,
       "persistent": true

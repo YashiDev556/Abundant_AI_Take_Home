@@ -75,6 +75,7 @@ This starts:
 - `npm run db:push` - Push schema to database
 - `npm run db:migrate` - Run migrations
 - `npm run db:studio` - Open Prisma Studio
+- `create_tables_full.sql` - Run on SQL server for manual table creation
 
 ## 📚 Documentation
 

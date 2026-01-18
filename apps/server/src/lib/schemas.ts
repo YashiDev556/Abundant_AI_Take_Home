@@ -64,7 +64,7 @@ export const submitReviewSchema = z.object({
 // ==================== Param Schemas ====================
 
 export const idParamSchema = z.object({
-  id: z.string().cuid('Invalid ID format'),
+  id: z.string().min(1, 'ID is required'),
 })
 
 // ==================== Query Schemas ====================
