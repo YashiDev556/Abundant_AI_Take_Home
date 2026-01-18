@@ -79,11 +79,6 @@ This starts:
 
 ## 📚 Documentation
 
-- **[BONUS_FEATURES.md](./BONUS_FEATURES.md)** - Complete guide to bonus features
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Vercel deployment instructions
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture overview
-- **[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)** - Development patterns and examples
-- **[DESIGN_DOC.md](./DESIGN_DOC.md)** - State machine and design decisions
 - **[CLERK_SUPABASE_INTEGRATION.md](./CLERK_SUPABASE_INTEGRATION.md)** - Authentication setup
 
 ## Clerk + Supabase Integration
