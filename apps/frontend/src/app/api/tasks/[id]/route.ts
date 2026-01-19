@@ -2,6 +2,7 @@
  * Task by ID API Routes
  * GET /api/tasks/[id] - Get a specific task
  * PUT /api/tasks/[id] - Update a task
+ * DELETE /api/tasks/[id] - Delete a task
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -59,6 +60,34 @@ export async function PUT(
     
     const task = await TaskService.updateTask(id, validatedData, user)
     return NextResponse.json({ task })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation error', details: error.errors },
+        { status: HTTP_STATUS.BAD_REQUEST }
+      )
+    }
+    return handleApiError(error)
+  }
+}
+
+/**
+ * DELETE /api/tasks/[id]
+ * Delete a task (only if DRAFT or REJECTED)
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await getAuthenticatedUser()
+    const { id } = await params
+    
+    // Validate ID
+    idParamSchema.parse({ id })
+    
+    await TaskService.deleteTask(id, user)
+    return new NextResponse(null, { status: HTTP_STATUS.NO_CONTENT })
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

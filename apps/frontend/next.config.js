@@ -11,11 +11,22 @@ dotenv.config({ path: rootEnvPath });
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  
+  // Enable production optimizations
+  compress: true, // Enable gzip compression
+  poweredByHeader: false, // Remove X-Powered-By header
 
   // Disable TypeScript type checking during build
   // (necessary for Turborepo + workspaces + Vercel isolation)
   typescript: {
     ignoreBuildErrors: true,
+  },
+  
+  // Performance optimizations
+  experimental: {
+    // Use optimized package imports (tree-shaking for icon libraries)
+    // NOTE: Excluding @tanstack/react-query as it causes Turbopack HMR issues
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
 
   // Support isolated build directory for build-check script
@@ -32,8 +43,36 @@ const nextConfig = {
     resolveAlias: {
       '@repo/server': path.resolve(__dirname, '../server/src'),
     },
-    // Ensure workspace packages are resolved correctly
-    resolveExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
+    // Ensure workspace packages are resolved correctly, including .mjs for ESM packages
+    resolveExtensions: ['.ts', '.tsx', '.js', '.jsx', '.json', '.mjs'],
+  },
+  
+  // Add headers to prevent caching of JS modules in development
+  // This fixes Turbopack HMR issues with stale module factories
+  async headers() {
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: '/_next/static/chunks/:path*',
+          headers: [
+            {
+              key: 'Cache-Control',
+              value: 'no-store, must-revalidate',
+            },
+          ],
+        },
+        {
+          source: '/_next/static/:path*',
+          headers: [
+            {
+              key: 'Cache-Control',
+              value: 'no-store, must-revalidate',
+            },
+          ],
+        },
+      ]
+    }
+    return []
   },
   // Webpack fallback for non-Turbopack builds
   webpack: (config, { isServer }) => {
@@ -44,6 +83,8 @@ const nextConfig = {
     }
     // Ensure workspace packages are resolved
     config.resolve.symlinks = true
+    // Add .mjs extension for ESM packages like @tanstack/react-query
+    config.resolve.extensions = [...(config.resolve.extensions || []), '.mjs']
     
     if (isServer) {
       // Don't bundle Prisma - it needs to be external so engine binaries are available
@@ -58,6 +99,7 @@ const nextConfig = {
     return config
   },
   // Transpile workspace packages that need to be processed by Next.js
+  // NOTE: @tanstack/react-query is already compiled and should NOT be transpiled
   transpilePackages: ['@repo/db', '@repo/types'],
   
   // External packages that should not be bundled

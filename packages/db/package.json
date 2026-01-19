@@ -11,6 +11,7 @@
     }
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "node -e \"process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy'; process.env.DIRECT_URL = process.env.DIRECT_URL || 'postgresql://dummy:dummy@localhost:5432/dummy'; require('child_process').execSync('npx prisma generate', {stdio: 'inherit'})\"",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

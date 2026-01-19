@@ -3,7 +3,7 @@
  * Business logic for review operations
  */
 
-import { prisma } from '@repo/db'
+import { prisma, AuditAction } from '@repo/db'
 import { User } from '@repo/db'
 import {
   TaskState,
@@ -14,7 +14,6 @@ import {
   getStateFromDecision,
   isValidTaskTransition,
   TASK_INCLUDE_FULL,
-  AuditAction,
 } from '@repo/types'
 import {
   NotFoundError,
@@ -71,7 +70,7 @@ export class ReviewService {
   }
 
   /**
-   * Submit review decision
+   * Submit review decision (or change a previous decision)
    */
   static async submitReview(
     taskId: string,
@@ -104,12 +103,19 @@ export class ReviewService {
     // Get the new state from decision
     const newState = getStateFromDecision(decision as ReviewDecision)
 
-    // Validate transition
-    if (!isValidTaskTransition(existingTask.state as TaskState, newState)) {
+    // Check if this is the same state (just adding new feedback, not changing decision)
+    const isSameState = existingTask.state === newState
+
+    // Validate transition (unless it's the same state - that's always allowed for adding feedback)
+    if (!isSameState && !isValidTaskTransition(existingTask.state as TaskState, newState)) {
       throw new BadRequestError(
         `Invalid state transition from ${existingTask.state} to ${newState}`
       )
     }
+
+    // Determine if this is a decision change (re-review) or just adding feedback
+    const isDecisionChange = !isSameState && [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED]
+      .includes(existingTask.state as TaskState)
 
     // If starting review (SUBMITTED → IN_REVIEW), assign reviewer first
     if (existingTask.state === TaskState.SUBMITTED) {
@@ -141,12 +147,13 @@ export class ReviewService {
       },
     })
 
-    // Update task state
+    // Update task state (only if changed)
     const task = await prisma.task.update({
       where: { id: taskId },
       data: {
-        state: newState,
-        // Clear reviewer assignment for final states
+        // Only update state if it changed
+        ...(isSameState ? {} : { state: newState }),
+        // Update reviewer assignment
         reviewerId: newState === TaskState.APPROVED ? null : existingTask.reviewerId || reviewer.id,
       },
       include: TASK_INCLUDE_FULL,
@@ -160,7 +167,7 @@ export class ReviewService {
     }
 
     // Create audit logs and history snapshot
-    await Promise.all([
+    const auditLogs = [
       AuditService.log({
         action: AuditAction.REVIEW_SUBMITTED,
         entityType: 'review',
@@ -172,6 +179,7 @@ export class ReviewService {
           taskId,
           decision,
           hasComment: !!comment,
+          isDecisionChange,
         },
       }),
       AuditService.log({
@@ -185,14 +193,36 @@ export class ReviewService {
           previousState: existingTask.state,
           currentState: newState,
           reviewId: review.id,
+          isDecisionChange,
         },
       }),
       TaskHistoryService.createSnapshot({
         task: task as unknown as Task,
         changedBy: reviewer.id,
-        changeType: `review_${decision.toLowerCase()}`,
+        changeType: isDecisionChange ? `decision_changed_to_${decision.toLowerCase()}` : `review_${decision.toLowerCase()}`,
       }),
-    ])
+    ]
+
+    // Log decision change separately for clear audit trail
+    if (isDecisionChange) {
+      auditLogs.push(
+        AuditService.log({
+          action: AuditAction.REVIEW_DECISION_CHANGED,
+          entityType: 'task',
+          entityId: taskId,
+          userId: reviewer.id,
+          userName: reviewer.name || undefined,
+          userEmail: reviewer.email,
+          metadata: {
+            previousDecision: existingTask.state,
+            newDecision: newState,
+            reviewId: review.id,
+          },
+        })
+      )
+    }
+
+    await Promise.all(auditLogs)
 
     return {
       task: task as unknown as Task,

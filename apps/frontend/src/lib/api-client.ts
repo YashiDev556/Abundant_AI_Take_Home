@@ -3,7 +3,7 @@
  * Centralized API communication with full type safety
  */
 
-import {
+import type {
   Task,
   Review,
   User,
@@ -37,32 +37,16 @@ class ApiClient {
   }
 
   /**
-   * Get authentication token from Next.js API route
-   */
-  private async getAuthToken(): Promise<string | null> {
-    try {
-      const response = await fetch('/api/auth/token', { credentials: 'include' })
-      if (response.ok) {
-        const data = await response.json()
-        return data.token || null
-      }
-    } catch (error) {
-      console.warn('Failed to get auth token:', error)
-    }
-    return null
-  }
-
-  /**
    * Make an authenticated request
+   * OPTIMIZED: Minimal error handling, fast failure
    */
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const token = await this.getAuthToken()
-
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     }
 
     // Merge existing headers
@@ -70,47 +54,45 @@ class ApiClient {
       Object.assign(headers, options.headers)
     }
 
-    // Add Authorization header if we have a token
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
     // Use relative path if baseUrl is empty (Next.js API routes)
-    // Otherwise use full URL (external Express server)
     const url = this.baseUrl ? `${this.baseUrl}${endpoint}` : endpoint
 
     try {
       const response = await fetch(url, {
         ...options,
         headers,
-        credentials: 'include', // Include cookies for Clerk session (fallback)
+        credentials: 'include',
+        // Performance optimizations
+        keepalive: true, // Reuse connections
+        // Signal for request timeout (optional - can add if needed)
       })
 
       if (!response.ok) {
-        // Try to parse error response
-        let errorMessage = `HTTP error! status: ${response.status}`
+        // Fast error parsing
+        let errorMessage = `HTTP ${response.status}`
         try {
           const error = await response.json()
           errorMessage = error.error || error.message || errorMessage
+          // Only log in development
+          if (process.env.NODE_ENV === 'development') {
+            console.error('[API Error]', endpoint, error)
+          }
         } catch {
-          // If JSON parsing fails, use status text
           errorMessage = response.statusText || errorMessage
         }
         throw new Error(errorMessage)
       }
 
+      // Handle 204 No Content responses (e.g., DELETE)
+      if (response.status === 204) {
+        return undefined as T
+      }
+
       return response.json()
     } catch (error) {
-      // Network errors or fetch failures
-      if (error instanceof TypeError) {
-        // More specific error messages
-        if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
-          // This usually means the API route crashed or returned an invalid response
-          throw new Error('Network error: Failed to connect to server. The API route may be experiencing issues. Please check the server logs.')
-        }
-        if (error.message.includes('NetworkError') || error.message.includes('Network request failed')) {
-          throw new Error('Network error: Failed to connect to server. Please check your connection and try again.')
-        }
+      // Fast network error handling
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error: Failed to connect to server')
       }
       throw error
     }
@@ -178,6 +160,10 @@ class TasksService {
   }
 
   async get(id: string): Promise<Task> {
+    // Prevent fetching temp tasks - they don't exist on the server
+    if (id?.startsWith('temp-')) {
+      throw new Error('Cannot fetch temporary task')
+    }
     const response = await this.client.get<TaskResponse>(`/api/tasks/${id}`)
     return response.task
   }
@@ -194,6 +180,15 @@ class TasksService {
 
   async submit(id: string): Promise<Task> {
     const response = await this.client.post<TaskResponse>(`/api/tasks/${id}/submit`)
+    return response.task
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.client.delete<void>(`/api/tasks/${id}`)
+  }
+
+  async duplicate(id: string): Promise<Task> {
+    const response = await this.client.post<TaskResponse>(`/api/tasks/${id}/duplicate`)
     return response.task
   }
 }

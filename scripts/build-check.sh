@@ -427,6 +427,51 @@ run_runtime_tests() {
         runtime_failed=true
     fi
     
+    # Test frontend API health endpoint (catches database errors like Prisma issues)
+    print_step "Testing frontend API health (database connection)..."
+    local api_health_response=$(curl -s "http://localhost:$TEST_FRONTEND_PORT/api/health" 2>/dev/null)
+    local api_health_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$TEST_FRONTEND_PORT/api/health" 2>/dev/null)
+    
+    if [[ "$api_health_status" == "200" ]]; then
+        if echo "$api_health_response" | grep -q '"status":"ok"'; then
+            print_success "Frontend API health check passed"
+        else
+            print_warning "Frontend API health returned unexpected response"
+        fi
+    elif [[ "$api_health_status" == "503" ]]; then
+        print_error "Frontend API health check failed (database connection error)"
+        echo -e "${CYAN}Response: $api_health_response${NC}"
+        runtime_failed=true
+    else
+        print_warning "Frontend API health returned status $api_health_status"
+    fi
+    
+    # Test database connectivity with parallel requests (catches "prepared statement already exists" errors)
+    print_step "Testing database with parallel requests (Prisma stress test)..."
+    local parallel_errors=0
+    local parallel_responses=""
+    
+    # Make 5 parallel requests to trigger potential prepared statement issues
+    for i in {1..5}; do
+        curl -s "http://localhost:$TEST_FRONTEND_PORT/api/health" 2>&1 &
+    done
+    wait
+    
+    # Check if any of the parallel requests caused errors in server output
+    if grep -qi "prepared statement" "$RUNTIME_OUTPUT" 2>/dev/null; then
+        print_error "Database error detected: 'prepared statement already exists'"
+        print_error "This is a Prisma connection pooling issue with PgBouncer"
+        echo -e "${CYAN}Fix: Add ?pgbouncer=true to DATABASE_URL or check packages/db/src/index.ts${NC}"
+        runtime_failed=true
+    elif grep -qi "PrismaClientKnownRequestError\|PrismaClientUnknownRequestError" "$RUNTIME_OUTPUT" 2>/dev/null; then
+        print_error "Prisma database error detected in runtime"
+        echo -e "${CYAN}Last errors from server:${NC}"
+        grep -i "prisma\|database\|error" "$RUNTIME_OUTPUT" | tail -10
+        runtime_failed=true
+    else
+        print_success "Database parallel requests test passed"
+    fi
+    
     # Stop test servers
     print_step "Stopping test servers..."
     stop_test_servers

@@ -73,9 +73,32 @@ export class TaskHistoryService {
    * Get the diff between two versions
    */
   static async getDiff(taskId: string, fromVersion: number, toVersion: number) {
+    // Validate version numbers
+    if (!Number.isInteger(fromVersion) || !Number.isInteger(toVersion) || fromVersion < 1 || toVersion < 1) {
+      return null
+    }
+
+    // Validate version order
+    if (fromVersion === toVersion) {
+      return {
+        fromVersion,
+        toVersion,
+        fromState: null,
+        toState: null,
+        changes: [],
+        changedBy: null,
+        changedAt: null,
+      }
+    }
+
+    // Ensure fromVersion < toVersion for correct comparison direction
+    // If user passes versions in reverse order, swap them
+    const actualFromVersion = fromVersion < toVersion ? fromVersion : toVersion
+    const actualToVersion = fromVersion < toVersion ? toVersion : fromVersion
+
     const [from, to] = await Promise.all([
-      this.getVersion(taskId, fromVersion),
-      this.getVersion(taskId, toVersion),
+      this.getVersion(taskId, actualFromVersion),
+      this.getVersion(taskId, actualToVersion),
     ])
 
     if (!from || !to) {
@@ -110,8 +133,12 @@ export class TaskHistoryService {
 
       if (oldVal !== newVal) {
         let type: 'added' | 'removed' | 'modified' = 'modified'
-        if (!oldVal && newVal) type = 'added'
-        if (oldVal && !newVal) type = 'removed'
+        // Use null/undefined check, not truthy check, to handle empty strings correctly
+        if ((oldVal === null || oldVal === undefined) && (newVal !== null && newVal !== undefined)) {
+          type = 'added'
+        } else if ((oldVal !== null && oldVal !== undefined) && (newVal === null || newVal === undefined)) {
+          type = 'removed'
+        }
 
         changes.push({
           field,

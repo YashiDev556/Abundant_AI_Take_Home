@@ -41,12 +41,13 @@ function FieldDiff({ change }: { change: DiffChange }) {
     .trim()
 
   // For text content, show line-by-line diff
-  const isLongText =
-    typeof oldValue === 'string' && typeof newValue === 'string' && 
-    (oldValue.length > 100 || newValue.length > 100)
+  // Handle added/removed fields: if one is null/undefined, treat the other as the value
+  const oldText = oldValue !== null && oldValue !== undefined ? String(oldValue) : ''
+  const newText = newValue !== null && newValue !== undefined ? String(newValue) : ''
+  const isLongText = (oldText.length > 100 || newText.length > 100)
 
   if (isLongText) {
-    const diff = diffLines(oldValue || '', newValue || '')
+    const diff = diffLines(oldText, newText)
 
     return (
       <Card>

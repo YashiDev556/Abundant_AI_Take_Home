@@ -6,6 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { tasksApi } from '@/lib/api-client'
 import { Difficulty } from '@repo/types'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/page-header'
+import { FileText, Edit3 } from 'lucide-react'
 
 export default function EditTaskPage() {
   const params = useParams()
@@ -79,16 +81,33 @@ export default function EditTaskPage() {
 
   if (isLoading) {
     return (
-      <div className="p-8">
-        <p>Loading...</p>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: "Tasks", href: "/tasks", icon: <FileText className="size-3.5 text-primary" /> },
+            { label: "Loading...", href: `#` },
+            { label: "Edit" }
+          ]}
+        />
+        <div className="px-4 py-8">
+          <p>Loading...</p>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="p-8">
-        <p className="text-red-500">Error: {error.message}</p>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: "Tasks", href: "/tasks", icon: <FileText className="size-3.5 text-primary" /> },
+            { label: "Error" }
+          ]}
+        />
+        <div className="px-4 py-8">
+          <p className="text-red-500">Error: {error.message}</p>
+        </div>
       </div>
     )
   }
@@ -97,15 +116,30 @@ export default function EditTaskPage() {
 
   if (!task) {
     return (
-      <div className="p-8">
-        <p>Task not found</p>
+      <div className="space-y-6">
+        <PageHeader
+          breadcrumbs={[
+            { label: "Tasks", href: "/tasks", icon: <FileText className="size-3.5 text-primary" /> },
+            { label: "Not Found" }
+          ]}
+        />
+        <div className="px-4 py-8">
+          <p>Task not found</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Edit Task</h1>
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Tasks", href: "/tasks", icon: <FileText className="size-3.5 text-primary" /> },
+          { label: task.title, href: `/tasks/${taskId}` },
+          { label: "Edit", icon: <Edit3 className="size-3.5 text-primary" /> }
+        ]}
+      />
+      <div className="px-4 py-8 max-w-4xl mx-auto">
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
@@ -264,6 +298,7 @@ export default function EditTaskPage() {
           <p className="text-red-500">Error: {updateMutation.error.message}</p>
         )}
       </form>
+      </div>
     </div>
   )
 }

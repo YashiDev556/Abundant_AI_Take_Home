@@ -183,24 +183,30 @@ export function canUserReviewTask(userRole: UserRole, taskState: TaskState): boo
 /**
  * Format date for display
  */
-export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+export function formatDate(date: Date | string | null | undefined, options?: Intl.DateTimeFormatOptions): string {
+  if (!date) return 'N/A'
   const dateObj = typeof date === 'string' ? new Date(date) : date
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return 'N/A'
   return dateObj.toLocaleDateString(undefined, options)
 }
 
 /**
  * Format date and time for display
  */
-export function formatDateTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+export function formatDateTime(date: Date | string | null | undefined, options?: Intl.DateTimeFormatOptions): string {
+  if (!date) return 'N/A'
   const dateObj = typeof date === 'string' ? new Date(date) : date
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return 'N/A'
   return dateObj.toLocaleString(undefined, options)
 }
 
 /**
  * Get relative time string (e.g., "2 hours ago")
  */
-export function getRelativeTime(date: Date | string): string {
+export function getRelativeTime(date: Date | string | null | undefined): string {
+  if (!date) return 'N/A'
   const dateObj = typeof date === 'string' ? new Date(date) : date
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return 'N/A'
   const now = new Date()
   const diffMs = now.getTime() - dateObj.getTime()
   const diffSecs = Math.floor(diffMs / 1000)

@@ -168,17 +168,32 @@ export function handleApiError(error: unknown): NextResponse {
   }
 
   // Unknown error - return more details in development
-  const errorMessage = error instanceof Error 
-    ? error.message 
-    : 'Internal server error'
+  let errorMessage = 'Internal server error'
+  
+  if (error instanceof Error) {
+    errorMessage = error.message || errorMessage
+  } else if (typeof error === 'string') {
+    errorMessage = error
+  } else if (error && typeof error === 'object' && 'message' in error) {
+    errorMessage = String((error as { message: unknown }).message) || errorMessage
+  }
+  
+  const debugInfo: Record<string, any> = {}
+  
+  if (process.env.NODE_ENV === 'development') {
+    if (error instanceof Error) {
+      debugInfo.stack = error.stack
+      debugInfo.name = error.name
+    }
+    if (error && typeof error === 'object') {
+      debugInfo.rawError = String(error)
+    }
+  }
   
   return NextResponse.json(
     { 
       error: errorMessage,
-      ...(process.env.NODE_ENV === 'development' && error instanceof Error && {
-        stack: error.stack,
-        name: error.name,
-      })
+      ...debugInfo,
     },
     { status: 500 }
   )

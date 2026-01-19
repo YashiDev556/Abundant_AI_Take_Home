@@ -3,7 +3,7 @@
  * Business logic for task operations
  */
 
-import { prisma } from '@repo/db'
+import { prisma, AuditAction } from '@repo/db'
 import { User } from '@repo/db'
 import {
   TaskState,
@@ -11,9 +11,8 @@ import {
   canEditTask,
   canSubmitTask,
   TASK_INCLUDE_FULL,
-  TASK_INCLUDE_LIGHT,
+  TASK_SELECT_LIST,
   ERROR_MESSAGES,
-  AuditAction,
 } from '@repo/types'
 import {
   NotFoundError,
@@ -27,12 +26,30 @@ import { TaskHistoryService } from './task-history.service'
 export class TaskService {
   /**
    * Get all tasks for a specific author (lightweight - no reviews)
+   * Optimized: Only fetches essential fields, excludes heavy text content
    */
   static async getTasksByAuthor(authorId: string, limit?: number): Promise<Task[]> {
     const tasks = await prisma.task.findMany({
       where: { authorId },
       orderBy: { createdAt: 'desc' },
-      include: TASK_INCLUDE_LIGHT,
+      select: {
+        ...TASK_SELECT_LIST,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        // Don't include reviews for list view
+      },
       ...(limit && { take: limit }),
     })
 
@@ -222,7 +239,7 @@ export class TaskService {
 
   /**
    * Get tasks awaiting review (SUBMITTED or IN_REVIEW)
-   * Use lightweight include for list views
+   * Optimized: Only fetches essential fields
    */
   static async getTasksForReview(limit?: number): Promise<Task[]> {
     const tasks = await prisma.task.findMany({
@@ -232,7 +249,23 @@ export class TaskService {
         },
       },
       orderBy: { createdAt: 'asc' }, // Oldest first
-      include: TASK_INCLUDE_LIGHT,
+      select: {
+        ...TASK_SELECT_LIST,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
       ...(limit && { take: limit }),
     })
 
@@ -242,6 +275,7 @@ export class TaskService {
   /**
    * Get tasks that a reviewer has reviewed (APPROVED, REJECTED, CHANGES_REQUESTED)
    * Shows tasks where the reviewer has submitted a review
+   * Optimized: Only fetches essential fields
    */
   static async getReviewerHistory(reviewerId: string, limit?: number): Promise<Task[]> {
     const tasks = await prisma.task.findMany({
@@ -263,11 +297,71 @@ export class TaskService {
         },
       },
       orderBy: { updatedAt: 'desc' }, // Most recently reviewed first
-      include: TASK_INCLUDE_LIGHT,
+      select: {
+        ...TASK_SELECT_LIST,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
       ...(limit && { take: limit }),
     })
 
     return tasks as unknown as Task[]
+  }
+
+  /**
+   * Delete a task (only if DRAFT or REJECTED)
+   */
+  static async deleteTask(taskId: string, user: User): Promise<void> {
+    const existingTask = await prisma.task.findUnique({
+      where: { id: taskId },
+    })
+
+    if (!existingTask) {
+      throw new NotFoundError('Task')
+    }
+
+    // Check if user is the author
+    if (existingTask.authorId !== user.id) {
+      throw new ForbiddenError(ERROR_MESSAGES.FORBIDDEN_AUTHOR_ONLY)
+    }
+
+    // Only allow deletion of DRAFT or REJECTED tasks
+    if (existingTask.state !== TaskState.DRAFT && existingTask.state !== TaskState.REJECTED) {
+      throw new BadRequestError(
+        `Task cannot be deleted in ${existingTask.state} state. Only DRAFT and REJECTED tasks can be deleted.`
+      )
+    }
+
+    // Delete the task (cascade will handle related records)
+    await prisma.task.delete({
+      where: { id: taskId },
+    })
+
+    // Create audit log
+    await AuditService.log({
+      action: AuditAction.TASK_DELETED,
+      entityType: 'task',
+      entityId: taskId,
+      userId: user.id,
+      userName: user.name || undefined,
+      userEmail: user.email,
+      metadata: {
+        title: existingTask.title,
+        state: existingTask.state,
+      },
+    })
   }
 
   /**
@@ -325,10 +419,88 @@ export class TaskService {
     const tasks = await prisma.task.findMany({
       where: whereClause,
       orderBy: { updatedAt: 'desc' },
-      include: TASK_INCLUDE_LIGHT,
+      select: {
+        ...TASK_SELECT_LIST,
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
       ...(limit && { take: limit }),
     })
 
     return tasks as unknown as Task[]
+  }
+
+  /**
+   * Duplicate a task (creates a copy in DRAFT state)
+   */
+  static async duplicateTask(taskId: string, user: User): Promise<Task> {
+    const existingTask = await prisma.task.findUnique({
+      where: { id: taskId },
+    })
+
+    if (!existingTask) {
+      throw new NotFoundError('Task')
+    }
+
+    // Check if user is the author (only authors can duplicate their tasks)
+    if (existingTask.authorId !== user.id) {
+      throw new ForbiddenError(ERROR_MESSAGES.FORBIDDEN_AUTHOR_ONLY)
+    }
+
+    // Create a copy with a new title
+    const task = await prisma.task.create({
+      data: {
+        title: `${existingTask.title} (Copy)`,
+        instruction: existingTask.instruction,
+        difficulty: existingTask.difficulty,
+        categories: existingTask.categories,
+        maxAgentTimeoutSec: existingTask.maxAgentTimeoutSec,
+        maxTestTimeoutSec: existingTask.maxTestTimeoutSec,
+        taskYaml: existingTask.taskYaml,
+        dockerComposeYaml: existingTask.dockerComposeYaml,
+        solutionSh: existingTask.solutionSh,
+        runTestsSh: existingTask.runTestsSh,
+        testsJson: existingTask.testsJson,
+        state: TaskState.DRAFT,
+        authorId: user.id,
+      },
+      include: TASK_INCLUDE_FULL,
+    })
+
+    // Create audit log and history snapshot
+    await Promise.all([
+      AuditService.log({
+        action: AuditAction.TASK_CREATED,
+        entityType: 'task',
+        entityId: task.id,
+        userId: user.id,
+        userName: user.name || undefined,
+        userEmail: user.email,
+        metadata: { 
+          title: task.title, 
+          state: task.state,
+          duplicatedFrom: taskId,
+        },
+      }),
+      TaskHistoryService.createSnapshot({
+        task: task as unknown as Task,
+        changedBy: user.id,
+        changeType: 'created',
+      }),
+    ])
+
+    return task as unknown as Task
   }
 }

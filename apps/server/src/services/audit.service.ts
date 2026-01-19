@@ -3,8 +3,7 @@
  * Handles creation and retrieval of audit logs for compliance and transparency
  */
 
-import { prisma } from '@repo/db'
-import { AuditAction } from '@repo/types'
+import { prisma, AuditAction } from '@repo/db'
 
 interface CreateAuditLogParams {
   action: AuditAction

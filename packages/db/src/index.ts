@@ -1,42 +1,56 @@
-// Import PrismaClient from default location
-// Using default output location for better Next.js/Vercel compatibility
+/**
+ * Prisma Client Instance
+ * Singleton pattern with connection pooling optimization
+ * 
+ * IMPORTANT: Uses lazy initialization to prevent "prepared statement already exists" 
+ * errors with Supabase connection pooler in Next.js dev mode
+ */
+
 import { PrismaClient } from '@prisma/client'
 
-// Prisma client singleton
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+// Global declaration for Next.js hot reloading
+declare global {
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined
 }
 
-// Helper to ensure pgbouncer parameter is in connection string
-// This prevents "prepared statement does not exist" errors with connection poolers
-function getDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL || ''
+function createPrismaClient(): PrismaClient {
+  // Get database URL
+  const url = process.env.DATABASE_URL || 
+              process.env.POSTGRES_PRISMA_URL || 
+              process.env.POSTGRES_URL
+  
   if (!url) {
-    // Return a dummy URL for build time (Prisma generate doesn't need a real connection)
-    // This allows the build to succeed even if DATABASE_URL is not set
-    return 'postgresql://dummy:dummy@localhost:5432/dummy?pgbouncer=true'
+    throw new Error('DATABASE_URL environment variable is not set')
   }
   
-  // If already has pgbouncer=true, return as is
-  if (url.includes('pgbouncer=true')) return url
-  
-  // Add pgbouncer=true parameter
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}pgbouncer=true`
-}
+  // Add pgbouncer=true for Supabase connection pooler (port 6543)
+  // This disables prepared statements which cause "prepared statement already exists" errors
+  const isPgBouncer = url.includes(':6543') || url.includes('pooler')
+  const connectionString = isPgBouncer && !url.includes('pgbouncer=true')
+    ? `${url}${url.includes('?') ? '&' : '?'}pgbouncer=true`
+    : url
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  return new PrismaClient({
     datasources: {
       db: {
-        url: getDatabaseUrl(),
+        url: connectionString,
       },
     },
+    log: process.env.NODE_ENV === 'development' 
+      ? ['error', 'warn']
+      : ['error'],
   })
+}
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+// Use existing instance if available (prevents multiple instances in dev)
+// This is the critical fix for "prepared statement already exists" errors
+export const prisma: PrismaClient = global.__prisma ?? createPrismaClient()
 
-// Re-export everything from Prisma client
+// Store in global for Next.js dev mode hot reloading
+if (process.env.NODE_ENV !== 'production') {
+  global.__prisma = prisma
+}
+
+// Re-export all types from Prisma client
 export * from '@prisma/client'

@@ -5,35 +5,65 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 active:scale-[0.98]",
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-md hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-md hover:bg-destructive/90 hover:shadow-lg hover:shadow-destructive/25 active:scale-[0.98]",
-        outline:
-          "border border-border bg-transparent shadow-sm hover:bg-secondary hover:text-foreground active:scale-[0.98]",
-        secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 active:scale-[0.98]",
-        ghost:
-          "hover:bg-secondary hover:text-foreground",
-        link:
-          "text-primary underline-offset-4 hover:underline",
-        success:
-          "bg-success text-success-foreground shadow-md hover:bg-success/90 hover:shadow-lg hover:shadow-success/25 active:scale-[0.98]",
-        warning:
-          "bg-warning text-warning-foreground shadow-md hover:bg-warning/90 hover:shadow-lg hover:shadow-warning/25 active:scale-[0.98]",
+        default: [
+          "relative rounded-lg",
+          "bg-gradient-to-b from-zinc-700 to-zinc-900",
+          "dark:from-zinc-600 dark:to-zinc-800",
+          "text-white",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.3),0_4px_8px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.1)]",
+          "dark:shadow-[0_1px_2px_rgba(0,0,0,0.5),0_4px_8px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.08)]",
+          "hover:from-zinc-600 hover:to-zinc-800",
+          "dark:hover:from-zinc-500 dark:hover:to-zinc-700",
+          "border border-zinc-950/20 dark:border-zinc-950/50",
+        ],
+        destructive: [
+          "relative rounded-lg",
+          "bg-gradient-to-b from-red-500 to-red-700",
+          "text-white",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.3),0_4px_8px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.15)]",
+          "hover:from-red-400 hover:to-red-600",
+          "border border-red-900/30",
+        ],
+        outline: [
+          "relative rounded-lg",
+          "bg-background",
+          "border border-border",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+          "dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]",
+          "hover:bg-secondary",
+        ],
+        secondary: [
+          "relative rounded-lg",
+          "bg-gradient-to-b from-zinc-100 to-zinc-200",
+          "dark:from-zinc-700 dark:to-zinc-800",
+          "text-zinc-900 dark:text-zinc-100",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)]",
+          "dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)]",
+          "hover:from-zinc-50 hover:to-zinc-150",
+          "dark:hover:from-zinc-600 dark:hover:to-zinc-700",
+          "border border-zinc-300 dark:border-zinc-600",
+        ],
+        ghost: "hover:bg-secondary rounded-md",
+        link: "text-foreground underline-offset-4 hover:underline",
+        success: [
+          "relative rounded-lg",
+          "bg-gradient-to-b from-emerald-500 to-emerald-700",
+          "text-white",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.3),0_4px_8px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.15)]",
+          "hover:from-emerald-400 hover:to-emerald-600",
+          "border border-emerald-900/30",
+        ],
       },
       size: {
-        default: "h-10 px-5 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-12 rounded-lg px-8 text-base",
-        xl: "h-14 rounded-xl px-10 text-lg",
-        icon: "h-10 w-10",
+        default: "h-9 px-4 py-2",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-5",
+        icon: "h-9 w-9",
         "icon-sm": "h-8 w-8",
-        "icon-lg": "h-12 w-12",
       },
     },
     defaultVariants: {

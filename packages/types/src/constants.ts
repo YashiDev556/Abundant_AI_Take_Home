@@ -14,9 +14,10 @@ export const VALID_TASK_TRANSITIONS: Record<TaskState, TaskState[]> = {
   [TaskState.DRAFT]: [TaskState.SUBMITTED],
   [TaskState.SUBMITTED]: [TaskState.IN_REVIEW],
   [TaskState.IN_REVIEW]: [TaskState.APPROVED, TaskState.REJECTED, TaskState.CHANGES_REQUESTED],
-  [TaskState.APPROVED]: [], // Final state
-  [TaskState.REJECTED]: [TaskState.SUBMITTED], // Can be resubmitted
-  [TaskState.CHANGES_REQUESTED]: [TaskState.SUBMITTED], // Can be resubmitted after changes
+  // Reviewers can change their decision after the fact
+  [TaskState.APPROVED]: [TaskState.REJECTED, TaskState.CHANGES_REQUESTED],
+  [TaskState.REJECTED]: [TaskState.SUBMITTED, TaskState.APPROVED, TaskState.CHANGES_REQUESTED],
+  [TaskState.CHANGES_REQUESTED]: [TaskState.SUBMITTED, TaskState.APPROVED, TaskState.REJECTED],
 }
 
 /**
@@ -43,9 +44,15 @@ export const SUBMITTABLE_STATES: TaskState[] = [
 ]
 
 /**
- * States in which a task can be reviewed
+ * States in which a task can be reviewed (including changing previous decisions)
  */
-export const REVIEWABLE_STATES: TaskState[] = [TaskState.SUBMITTED, TaskState.IN_REVIEW]
+export const REVIEWABLE_STATES: TaskState[] = [
+  TaskState.SUBMITTED,
+  TaskState.IN_REVIEW,
+  TaskState.APPROVED,
+  TaskState.REJECTED,
+  TaskState.CHANGES_REQUESTED,
+]
 
 // ==================== UI Constants ====================
 
@@ -54,7 +61,7 @@ export const REVIEWABLE_STATES: TaskState[] = [TaskState.SUBMITTED, TaskState.IN
  */
 export const STATE_LABELS: Record<TaskState, string> = {
   [TaskState.DRAFT]: 'Draft',
-  [TaskState.SUBMITTED]: 'Submitted',
+  [TaskState.SUBMITTED]: 'Submitted for Review',
   [TaskState.IN_REVIEW]: 'In Review',
   [TaskState.APPROVED]: 'Approved',
   [TaskState.REJECTED]: 'Rejected',
@@ -89,8 +96,10 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   [AuditAction.TASK_APPROVED]: 'Approved Task',
   [AuditAction.TASK_REJECTED]: 'Rejected Task',
   [AuditAction.TASK_CHANGES_REQUESTED]: 'Requested Changes',
+  [AuditAction.TASK_DELETED]: 'Deleted Task',
   [AuditAction.REVIEW_STARTED]: 'Started Review',
   [AuditAction.REVIEW_SUBMITTED]: 'Submitted Review',
+  [AuditAction.REVIEW_DECISION_CHANGED]: 'Changed Review Decision',
 }
 
 /**
@@ -185,7 +194,28 @@ export const TASK_INCLUDE_AUTHOR_REVIEWER = {
 } as const
 
 /**
- * Lightweight include for list views - no reviews
+ * Minimal select for list views - only essential fields (NO heavy text content)
+ * This dramatically reduces payload size and database load for list queries
+ */
+export const TASK_SELECT_LIST = {
+  id: true,
+  title: true,
+  // Only get first 200 chars of instruction for preview
+  instruction: true, // Will be truncated client-side
+  difficulty: true,
+  categories: true,
+  state: true,
+  authorId: true,
+  reviewerId: true,
+  createdAt: true,
+  updatedAt: true,
+  // Exclude heavy fields: taskYaml, dockerComposeYaml, solutionSh, runTestsSh, testsJson
+  // Exclude timeout fields for list view (not needed)
+} as const
+
+/**
+ * Lightweight include for list views - no reviews, minimal fields
+ * Use this for /tasks list, reviewer dashboard, etc.
  */
 export const TASK_INCLUDE_LIGHT = {
   ...TASK_INCLUDE_AUTHOR_REVIEWER,
@@ -215,6 +245,7 @@ export const TASK_INCLUDE_FULL = {
 export const HTTP_STATUS = {
   OK: 200,
   CREATED: 201,
+  NO_CONTENT: 204,
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,

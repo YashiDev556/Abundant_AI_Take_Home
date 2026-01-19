@@ -1,8 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { reviewerApi } from '@/lib/api-client'
+import { useSubmitReview } from '@/hooks/use-reviews'
 import { ReviewDecision } from '@repo/types'
 import {
   Dialog,
@@ -63,29 +62,27 @@ const decisionOptions: {
 ]
 
 export function ReviewModal({ open, onOpenChange, taskId, taskTitle, onSuccess }: ReviewModalProps) {
-  const queryClient = useQueryClient()
   const [decision, setDecision] = useState<ReviewDecision | null>(null)
   const [comment, setComment] = useState('')
 
-  const submitMutation = useMutation({
-    mutationFn: () => {
-      if (!decision) throw new Error('Please select a decision')
-      return reviewerApi.submitReview(taskId, decision, comment || undefined)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['reviewer', 'tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['reviewer', 'tasks', taskId] })
-      onSuccess?.()
-      onOpenChange(false)
-      // Reset state
-      setDecision(null)
-      setComment('')
-    },
-  })
+  const submitMutation = useSubmitReview(taskId)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    submitMutation.mutate()
+    if (!decision) return
+    
+    submitMutation.mutate(
+      { decision, comment: comment || undefined },
+      {
+        onSuccess: () => {
+          onSuccess?.()
+          onOpenChange(false)
+          // Reset state
+          setDecision(null)
+          setComment('')
+        },
+      }
+    )
   }
 
   return (

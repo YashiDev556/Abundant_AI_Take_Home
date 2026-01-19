@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { reviewerApi, api } from '@/lib/api-client'
+import { reviewerApi, api, auditApi } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ReviewModal, ConfirmModal } from '@/components/modals'
+import { ConfirmModal } from '@/components/modals'
+import { ReviewSidebar } from '@/components/review-sidebar'
+import { ActivitySidebar } from '@/components/activity-sidebar'
 import { DiffViewer } from '@/components/ui/diff-viewer'
 import {
   ArrowLeft,
@@ -34,6 +36,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import { PageHeader } from '@/components/page-header'
 
 const getStateBadgeClass = (state: string) => {
   const classes: Record<string, string> = {
@@ -92,7 +95,6 @@ export default function ReviewerTaskDetailPage() {
   const queryClient = useQueryClient()
   const taskId = params.id as string
 
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
   const [isStartReviewModalOpen, setIsStartReviewModalOpen] = useState(false)
 
   const { data, isLoading, error } = useQuery({
@@ -107,6 +109,13 @@ export default function ReviewerTaskDetailPage() {
     enabled: !!data, // Only fetch when task is loaded
   })
 
+  // Fetch audit logs for activity sidebar
+  const { data: auditLogs = [], isLoading: isLoadingAudit } = useQuery({
+    queryKey: ['audit', 'task', taskId],
+    queryFn: () => auditApi.getEntityLogs('task', taskId),
+    enabled: !!data,
+  })
+
   const startReviewMutation = useMutation({
     mutationFn: () => reviewerApi.startReview(taskId),
     onSuccess: () => {
@@ -118,25 +127,49 @@ export default function ReviewerTaskDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="py-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10 rounded-lg" />
-          <div className="flex-1">
-            <Skeleton className="h-7 w-1/3" />
-            <Skeleton className="h-4 w-1/4 mt-2" />
+      <div className="w-full h-full px-8 py-6 overflow-y-auto">
+        <div className="space-y-6">
+          <PageHeader
+            breadcrumbs={[
+              { label: "Review Queue", href: "/reviewer", icon: <ClipboardCheck className="size-3.5 text-primary" /> },
+              { label: "Loading..." }
+            ]}
+          />
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-10 w-10 rounded-lg" />
+              <div className="flex-1">
+                <Skeleton className="h-7 w-1/3" />
+                <Skeleton className="h-4 w-1/4 mt-2" />
+              </div>
+            </div>
+            <Skeleton className="h-[400px] w-full rounded-xl" />
           </div>
         </div>
-        <Skeleton className="h-[400px] w-full rounded-xl" />
       </div>
     )
   }
 
   if (error) {
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : typeof error === 'string' 
+      ? error 
+      : 'An error occurred while loading the task'
+    
     return (
-      <div className="py-6">
-        <Alert variant="destructive">
-          <AlertDescription>Error loading task: {(error as Error).message}</AlertDescription>
-        </Alert>
+      <div className="w-full h-full px-8 py-6 overflow-y-auto">
+        <div className="space-y-6">
+          <PageHeader
+            breadcrumbs={[
+              { label: "Review Queue", href: "/reviewer", icon: <ClipboardCheck className="size-3.5 text-primary" /> },
+              { label: "Error" }
+            ]}
+          />
+          <Alert variant="destructive">
+            <AlertDescription>Error loading task: {errorMessage}</AlertDescription>
+          </Alert>
+        </div>
       </div>
     )
   }
@@ -144,16 +177,31 @@ export default function ReviewerTaskDetailPage() {
   const task = data
   if (!task) {
     return (
-      <div className="py-6">
-        <Alert>
-          <AlertDescription>Task not found</AlertDescription>
-        </Alert>
+      <div className="w-full h-full px-8 py-6 overflow-y-auto">
+        <div className="space-y-6">
+          <PageHeader
+            breadcrumbs={[
+              { label: "Review Queue", href: "/reviewer", icon: <ClipboardCheck className="size-3.5 text-primary" /> },
+              { label: "Not Found" }
+            ]}
+          />
+          <Alert>
+            <AlertDescription>Task not found</AlertDescription>
+          </Alert>
+        </div>
       </div>
     )
   }
 
   const canStartReview = task.state === 'SUBMITTED'
-  const canSubmitReview = task.state === 'IN_REVIEW'
+  const canReview = ['IN_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED'].includes(task.state)
+  
+  // Only pre-fill when editing a decision on the SAME version (not after resubmission)
+  // If task is IN_REVIEW or SUBMITTED, it's a fresh review cycle - don't pre-fill
+  const isEditingExistingDecision = ['APPROVED', 'REJECTED', 'CHANGES_REQUESTED'].includes(task.state)
+  const latestReview = isEditingExistingDecision && task.reviews && task.reviews.length > 0 
+    ? task.reviews[0] 
+    : null
   const hasChanges = diffData && diffData.changes && diffData.changes.length > 0
   const isResubmission = hasChanges && (task.state === 'SUBMITTED' || task.state === 'IN_REVIEW')
 
@@ -166,56 +214,49 @@ export default function ReviewerTaskDetailPage() {
   ].filter((f): f is { name: string; content: string } => f.content !== null && f.content !== undefined)
 
   return (
-    <div className="py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <Link href="/reviewer">
-            <Button variant="outline" size="icon" className="h-10 w-10 flex-shrink-0">
-              <ArrowLeft className="size-4" />
-            </Button>
-          </Link>
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-bold tracking-tight">{task.title}</h1>
-              <Badge variant="outline" className={cn("text-xs", getStateBadgeClass(task.state))}>
-                {task.state.replace('_', ' ')}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+    <div className="flex flex-1 h-full min-h-0">
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto min-w-0">
+        <div className="w-full px-8 py-6">
+    <div className="space-y-6">
+      <PageHeader
+        breadcrumbs={[
+          { label: "Review Queue", href: "/reviewer", icon: <ClipboardCheck className="size-3.5 text-primary" /> },
+          { label: task.title }
+        ]}
+        actions={
+              canStartReview ? (
+              <Button
+                onClick={() => setIsStartReviewModalOpen(true)}
+                className="gap-2 bg-teal-600 hover:bg-teal-700"
+              >
+                <Play className="size-4" />
+                Start Review
+              </Button>
+              ) : undefined
+        }
+      />
+      <div className="space-y-6">
+        {/* Task Metadata */}
+        <div className="flex items-center gap-3 mb-4">
+          <Badge variant="outline" className={cn("text-xs", getStateBadgeClass(task.state || ''))}>
+            {task.state === 'SUBMITTED' ? 'Awaiting Review' : (task.state || '').replace('_', ' ')}
+          </Badge>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            {task.author && (
               <span className="flex items-center gap-1.5">
                 <User className="size-3.5" />
-                {task.author?.name || task.author?.email}
+                <span className="text-muted-foreground/70">Created by</span> {task.author?.name || task.author?.email || 'Unknown'}
               </span>
+            )}
+            {task.createdAt && (
               <span className="flex items-center gap-1.5">
                 <Calendar className="size-3.5" />
-                Submitted {new Date(task.createdAt).toLocaleDateString()}
+                {new Date(task.createdAt).toLocaleDateString()}
               </span>
-            </div>
+            )}
           </div>
         </div>
-
-        <div className="flex gap-2">
-          {canStartReview && (
-            <Button
-              onClick={() => setIsStartReviewModalOpen(true)}
-              className="gap-2 bg-teal-600 hover:bg-teal-700"
-            >
-              <Play className="size-4" />
-              Start Review
-            </Button>
-          )}
-          {canSubmitReview && (
-            <Button
-              onClick={() => setIsReviewModalOpen(true)}
-              className="gap-2 bg-teal-600 hover:bg-teal-700"
-            >
-              <ClipboardCheck className="size-4" />
-              Submit Review
-            </Button>
-          )}
-        </div>
-      </div>
 
       {/* Resubmission Banner - Shows when task has changes from previous review */}
       {isResubmission && (
@@ -242,15 +283,9 @@ export default function ReviewerTaskDetailPage() {
           <div className="flex-1">
             <p className="font-medium text-blue-400">Review in Progress</p>
             <p className="text-sm text-muted-foreground">
-              You are currently reviewing this task. Submit your decision when ready.
+              You are currently reviewing this task. Use the panel on the right to submit your decision.
             </p>
           </div>
-          <Button
-            onClick={() => setIsReviewModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            Submit Review
-          </Button>
         </div>
       )}
 
@@ -314,12 +349,6 @@ export default function ReviewerTaskDetailPage() {
             <TabsTrigger value="files" className="gap-2">
               <FileCode className="size-4" />
               Files ({files.length})
-            </TabsTrigger>
-          )}
-          {task.reviews && task.reviews.length > 0 && (
-            <TabsTrigger value="history" className="gap-2">
-              <Clock className="size-4" />
-              History ({task.reviews.length})
             </TabsTrigger>
           )}
           {diffData && (
@@ -407,67 +436,6 @@ export default function ReviewerTaskDetailPage() {
           </div>
         </TabsContent>
 
-        {task.reviews && task.reviews.length > 0 && (
-          <TabsContent value="history" className="mt-0">
-            <div className="space-y-4">
-              {task.reviews.map((review: any, index: number) => {
-                const DecisionIcon = review.decision === 'APPROVE' ? CheckCircle2 :
-                  review.decision === 'REJECT' ? XCircle : AlertTriangle
-                const decisionColor = review.decision === 'APPROVE' ? 'text-emerald-500' :
-                  review.decision === 'REJECT' ? 'text-red-500' : 'text-amber-500'
-
-                return (
-                  <Card
-                    key={review.id}
-                    className={cn("border-border/50 animate-slide-up")}
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
-                    <CardContent className="p-5">
-                      <div className="flex items-start gap-4">
-                        <div className={cn(
-                          "flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
-                          review.decision === 'APPROVE' && 'bg-emerald-500/10',
-                          review.decision === 'REJECT' && 'bg-red-500/10',
-                          review.decision === 'REQUEST_CHANGES' && 'bg-amber-500/10',
-                        )}>
-                          <DecisionIcon className={cn("size-5", decisionColor)} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="font-medium">
-                                {review.reviewer?.name || review.reviewer?.email}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(review.createdAt).toLocaleString()}
-                              </p>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                review.decision === 'APPROVE' && 'badge-approved',
-                                review.decision === 'REJECT' && 'badge-rejected',
-                                review.decision === 'REQUEST_CHANGES' && 'badge-changes',
-                              )}
-                            >
-                              {review.decision.replace('_', ' ')}
-                            </Badge>
-                          </div>
-                          {review.comment && (
-                            <p className="mt-3 text-sm text-muted-foreground bg-secondary/30 rounded-lg p-3">
-                              {review.comment}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </TabsContent>
-        )}
-
         {/* Changes Tab - Shows diff between versions */}
         {diffData && (
           <TabsContent value="changes" className="mt-0">
@@ -490,26 +458,48 @@ export default function ReviewerTaskDetailPage() {
         )}
       </Tabs>
 
-      <ConfirmModal
-        open={isStartReviewModalOpen}
-        onOpenChange={setIsStartReviewModalOpen}
-        title="Start Review"
-        description="Once you start reviewing, this task will be assigned to you and marked as 'In Review'. Other reviewers won't be able to review it until you submit your decision."
-        confirmText="Start Review"
-        variant="default"
-        isLoading={startReviewMutation.isPending}
-        onConfirm={() => startReviewMutation.mutate()}
+        <ConfirmModal
+          open={isStartReviewModalOpen}
+          onOpenChange={setIsStartReviewModalOpen}
+          title="Start Review"
+          description="Once you start reviewing, this task will be assigned to you and marked as 'In Review'. Other reviewers won't be able to review it until you submit your decision."
+          confirmText="Start Review"
+          variant="default"
+          isLoading={startReviewMutation.isPending}
+          onConfirm={() => startReviewMutation.mutate()}
+        />
+          </div>
+        </div>
+        </div>
+      </div>
+
+      {/* Activity Sidebar - shows history and feedback */}
+      <ActivitySidebar
+        taskId={taskId}
+        reviews={(task.reviews || []).map(r => ({
+          ...r,
+          createdAt: typeof r.createdAt === 'string' 
+            ? r.createdAt 
+            : r.createdAt instanceof Date 
+            ? r.createdAt.toISOString() 
+            : new Date().toISOString()
+        }))}
+        auditLogs={auditLogs}
+        taskState={task.state || ''}
+        isLoading={isLoadingAudit}
       />
 
-      <ReviewModal
-        open={isReviewModalOpen}
-        onOpenChange={setIsReviewModalOpen}
-        taskId={taskId}
-        taskTitle={task.title}
-        onSuccess={() => {
-          router.push('/reviewer')
-        }}
-      />
+      {/* Review Sidebar - visible when task can be reviewed */}
+      {canReview && (
+        <ReviewSidebar
+          taskId={taskId}
+          taskTitle={task.title}
+          previousReview={latestReview ? { decision: latestReview.decision, comment: latestReview.comment } : undefined}
+          onSuccess={() => {
+            router.push('/reviewer')
+          }}
+        />
+      )}
     </div>
   )
 }

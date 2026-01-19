@@ -77,9 +77,6 @@ This starts:
 - `npm run db:studio` - Open Prisma Studio
 - `create_tables_full.sql` - Run on SQL server for manual table creation
 
-## 📚 Documentation
-
-- **[CLERK_SUPABASE_INTEGRATION.md](./CLERK_SUPABASE_INTEGRATION.md)** - Authentication setup
 
 ## Clerk + Supabase Integration
 

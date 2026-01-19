@@ -3,15 +3,13 @@
 import * as React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   FileText,
-  PlusCircle,
   CheckSquare,
   ClipboardList,
   ArrowLeftRight,
-  Sparkles,
   Terminal,
 } from "lucide-react"
 import {
@@ -20,7 +18,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -30,114 +27,75 @@ import {
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
+import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs"
 import { useUserRole } from "@/contexts/user-role-context"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const creatorMenuItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-    description: "Overview & stats",
-  },
-  {
-    title: "My Tasks",
-    url: "/tasks",
-    icon: FileText,
-    description: "View your tasks",
-  },
-  {
-    title: "Create Task",
-    url: "/tasks/new",
-    icon: PlusCircle,
-    description: "Submit new task",
-  },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Tasks", url: "/tasks", icon: FileText },
 ]
 
 const reviewerMenuItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-    description: "Overview & stats",
-  },
-  {
-    title: "Review Queue",
-    url: "/reviewer",
-    icon: ClipboardList,
-    description: "Tasks to review",
-  },
+  { title: "Review Queue", url: "/reviewer", icon: ClipboardList },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { role, setRole, isReviewer } = useUserRole()
   const [showReviewerAlert, setShowReviewerAlert] = useState(false)
+  const { user: clerkUser } = useUser()
 
-  // Fetch actual user role from API
   const { data: user } = useQuery({
     queryKey: ['user', 'me'],
     queryFn: () => api.auth.getMe(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
   })
 
   const actualUserRole = user?.role
   const isActuallyReviewer = actualUserRole === 'REVIEWER'
+  const userName = clerkUser?.fullName || clerkUser?.firstName || user?.name || 'User'
 
   const menuItems = isReviewer ? reviewerMenuItems : creatorMenuItems
 
   const handleRoleSwitch = () => {
     if (isReviewer) {
-      // Always allow switching from reviewer to creator
       setRole('creator')
+      router.push('/')
     } else {
-      // Check if user is actually a reviewer before allowing switch
       if (isActuallyReviewer) {
         setRole('reviewer')
+        router.push('/reviewer')
       } else {
-        // Show alert dialog for non-reviewers
         setShowReviewerAlert(true)
       }
     }
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border/50">
-      <SidebarHeader className="border-b border-border/50">
+    <Sidebar collapsible="icon" className="border-r border-border">
+      <SidebarHeader className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild className="hover:bg-transparent">
-              <Link href="/" className="flex items-center gap-3">
-                <div className={cn(
-                  "flex aspect-square size-8 items-center justify-center rounded-xl transition-all duration-300",
-                  isReviewer
-                    ? "bg-gradient-to-br from-teal-500 to-cyan-600 shadow-lg shadow-teal-500/20"
-                    : "bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/20"
-                )}>
-                  <Terminal className="size-4 text-white" />
+              <Link href="/" className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background">
+                  <Terminal className="h-4 w-4" />
                 </div>
-                <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className={cn(
-                    "font-bold text-base",
-                    isReviewer ? "gradient-text-reviewer" : "gradient-text"
-                  )}>
-                    Terminal-Bench
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {isReviewer ? "Reviewer Portal" : "Task Creator"}
-                  </span>
-                </div>
+                <span className="font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+                  Terminal-Bench
+                </span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -146,52 +104,34 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         {/* Role Switcher */}
-        <SidebarGroup className="mt-4">
-          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground/60 mb-2">
-            Current Mode
-          </SidebarGroupLabel>
-          <div className="px-2 pb-2 group-data-[collapsible=icon]:px-0">
-            <button
-              onClick={handleRoleSwitch}
-              className={cn(
-                "w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg",
-                "bg-secondary/50 hover:bg-secondary transition-all duration-200",
-                "border border-border/50 hover:border-primary/30",
-                "group/switcher cursor-pointer",
-                "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-2"
-              )}
-            >
-              <div className="flex items-center gap-3 group-data-[collapsible=icon]:gap-0">
-                <div className={cn(
-                  "p-1.5 rounded-md transition-colors",
-                  isReviewer ? "bg-teal-500/20 text-teal-400" : "bg-amber-500/20 text-amber-400"
-                )}>
-                  {isReviewer ? <CheckSquare className="size-4" /> : <Sparkles className="size-4" />}
-                </div>
-                <div className="text-left group-data-[collapsible=icon]:hidden">
-                  <p className="text-sm font-medium">
-                    {isReviewer ? "Reviewer" : "Creator"}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Switch to {isReviewer ? "Creator" : "Reviewer"}
-                  </p>
-                </div>
-              </div>
-              <ArrowLeftRight className="size-4 text-muted-foreground group-hover/switcher:text-primary transition-colors group-data-[collapsible=icon]:hidden" />
-            </button>
-          </div>
+        <SidebarGroup className="py-2">
+          <button
+            onClick={handleRoleSwitch}
+            className={cn(
+              "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm",
+              "bg-secondary/50 hover:bg-secondary transition-colors",
+              "group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:mx-auto"
+            )}
+          >
+            {isReviewer ? (
+              <CheckSquare className="h-4 w-4 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+            ) : (
+              <FileText className="h-4 w-4 flex-shrink-0" />
+            )}
+            <span className="group-data-[collapsible=icon]:hidden font-medium">
+              {isReviewer ? "Reviewer" : "Creator"}
+            </span>
+            <ArrowLeftRight className="h-3.5 w-3.5 ml-auto text-muted-foreground group-data-[collapsible=icon]:hidden" />
+          </button>
         </SidebarGroup>
 
-        <SidebarSeparator className="my-2" />
+        <SidebarSeparator />
 
         {/* Navigation */}
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-muted-foreground/60">
-            Navigation
-          </SidebarGroupLabel>
+        <SidebarGroup className="py-2">
           <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              {menuItems.map((item, index) => {
+            <SidebarMenu className="gap-0.5">
+              {menuItems.map((item) => {
                 const isActive = pathname === item.url || (item.url !== "/" && pathname?.startsWith(item.url))
                 return (
                   <SidebarMenuItem key={item.title}>
@@ -200,26 +140,13 @@ export function AppSidebar() {
                       isActive={isActive}
                       tooltip={item.title}
                       className={cn(
-                        "h-12 transition-all duration-200",
-                        isActive && (isReviewer
-                          ? "bg-teal-500/10 text-teal-400 border-l-2 border-teal-500"
-                          : "bg-amber-500/10 text-amber-400 border-l-2 border-amber-500"
-                        ),
-                        !isActive && "hover:bg-secondary/50 border-l-2 border-transparent"
+                        "h-9 px-2.5",
+                        isActive && "bg-secondary font-medium"
                       )}
-                      style={{
-                        animationDelay: `${index * 50}ms`
-                      }}
                     >
-                      <Link href={item.url} className="flex items-center gap-3 px-2">
-                        <item.icon className={cn(
-                          "size-5 transition-colors",
-                          isActive && (isReviewer ? "text-teal-400" : "text-amber-400")
-                        )} />
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">{item.title}</span>
-                          <span className="text-[10px] text-muted-foreground">{item.description}</span>
-                        </div>
+                      <Link href={item.url} className="flex items-center gap-2.5">
+                        <item.icon className="h-4 w-4" />
+                        <span className="group-data-[collapsible=icon]:hidden">{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -230,33 +157,36 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border/50 p-4">
+      <SidebarFooter className="p-3 border-t border-border">
         <SidebarMenu>
           <SignedIn>
             <SidebarMenuItem>
-              <div className="flex items-center justify-center px-2 py-2">
+              <div className="flex items-center gap-2.5 group-data-[collapsible=icon]:justify-center">
                 <UserButton
                   appearance={{
                     elements: {
-                      avatarBox: "h-9 w-9 ring-2 ring-border",
-                      userButtonPopoverCard: "bg-popover border border-border shadow-xl",
+                      avatarBox: "h-7 w-7",
+                      userButtonPopoverCard: "bg-popover border border-border shadow-lg",
                       userButtonPopoverActionButton: "hover:bg-secondary",
                     },
                   }}
                 />
+                <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+                  <p className="text-sm font-medium truncate">{userName}</p>
+                </div>
+                <ThemeToggle />
               </div>
             </SidebarMenuItem>
           </SignedIn>
           <SignedOut>
-            <SidebarMenuItem className="space-y-2">
+            <SidebarMenuItem className="space-y-1.5">
               <SignInButton mode="modal">
-                <Button variant="default" className="w-full justify-start gap-2">
-                  <Sparkles className="size-4" />
+                <Button size="sm" className="w-full justify-center">
                   Sign In
                 </Button>
               </SignInButton>
               <SignUpButton mode="modal">
-                <Button variant="outline" className="w-full justify-start gap-2">
+                <Button variant="outline" size="sm" className="w-full justify-center group-data-[collapsible=icon]:hidden">
                   Create Account
                 </Button>
               </SignUpButton>
@@ -265,14 +195,13 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarFooter>
 
-      {/* Alert Dialog for Non-Reviewers */}
       <AlertDialog open={showReviewerAlert} onOpenChange={setShowReviewerAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Reviewer Access Required</AlertDialogTitle>
             <AlertDialogDescription>
-              You are not a reviewer. Only users with reviewer status can access reviewer mode.
-              Please contact an administrator if you need reviewer access.
+              Only users with reviewer status can access reviewer mode.
+              Contact an administrator for access.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

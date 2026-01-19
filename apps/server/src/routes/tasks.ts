@@ -111,3 +111,41 @@ tasksRouter.post(
     }
   }
 )
+
+/**
+ * POST /api/tasks/:id/duplicate
+ * Duplicate a task (creates a copy in DRAFT state)
+ */
+tasksRouter.post(
+  '/:id/duplicate',
+  validateParams(idParamSchema),
+  async (req, res, next) => {
+    try {
+      const user = getUserFromRequest(req)
+      const { id } = req.params
+      const task = await TaskService.duplicateTask(id, user)
+      res.status(HTTP_STATUS.CREATED).json({ task, message: 'Task duplicated successfully' })
+    } catch (error) {
+      next(error)
+    }
+  }
+)
+
+/**
+ * DELETE /api/tasks/:id
+ * Delete a task (only if DRAFT or REJECTED)
+ */
+tasksRouter.delete(
+  '/:id',
+  validateParams(idParamSchema),
+  async (req, res, next) => {
+    try {
+      const user = getUserFromRequest(req)
+      const { id } = req.params
+      await TaskService.deleteTask(id, user)
+      res.status(HTTP_STATUS.NO_CONTENT).send()
+    } catch (error) {
+      next(error)
+    }
+  }
+)

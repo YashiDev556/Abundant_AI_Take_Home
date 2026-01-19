@@ -18,6 +18,7 @@ import {
   Send,
   Edit,
   Plus,
+  RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { AUDIT_ACTION_LABELS } from '@repo/types'
@@ -63,6 +64,8 @@ function getActionIcon(action: string) {
       return <Eye className={iconClass} />
     case 'REVIEW_SUBMITTED':
       return <FileText className={iconClass} />
+    case 'REVIEW_DECISION_CHANGED':
+      return <RefreshCw className={iconClass} />
     default:
       return <FileText className={iconClass} />
   }
@@ -89,9 +92,160 @@ function getActionColor(action: string) {
       return 'text-indigo-500 bg-indigo-500/10'
     case 'REVIEW_SUBMITTED':
       return 'text-cyan-500 bg-cyan-500/10'
+    case 'REVIEW_DECISION_CHANGED':
+      return 'text-pink-500 bg-pink-500/10'
     default:
       return 'text-muted-foreground bg-muted'
   }
+}
+
+/**
+ * Format state names for display
+ */
+function formatState(state: string): string {
+  const stateLabels: Record<string, string> = {
+    DRAFT: 'Draft',
+    SUBMITTED: 'Submitted for Review',
+    IN_REVIEW: 'In Review',
+    APPROVED: 'Approved',
+    REJECTED: 'Rejected',
+    CHANGES_REQUESTED: 'Changes Requested',
+  }
+  return stateLabels[state] || state.replace(/_/g, ' ')
+}
+
+/**
+ * Format decision for display
+ */
+function formatDecision(decision: string): string {
+  const decisionLabels: Record<string, string> = {
+    APPROVE: 'Approved',
+    REJECT: 'Rejected',
+    REQUEST_CHANGES: 'Requested Changes',
+  }
+  return decisionLabels[decision] || decision
+}
+
+/**
+ * Metadata display component with smart formatting
+ */
+function MetadataDisplay({ metadata, action }: { metadata: any; action: string }) {
+  // Filter out internal fields
+  const hiddenFields = ['reviewId', 'taskId', 'hasComment', 'isDecisionChange']
+  
+  // Special handling for different action types
+  if (action === 'TASK_SUBMITTED' || action === 'REVIEW_STARTED') {
+    return (
+      <div className="space-y-1.5 text-xs">
+        {metadata.previousState && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">From:</span>
+            <Badge variant="outline" className="text-xs font-normal">
+              {formatState(metadata.previousState)}
+            </Badge>
+            <span className="text-muted-foreground">→</span>
+            <Badge variant="outline" className="text-xs font-normal">
+              {formatState(metadata.currentState)}
+            </Badge>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (action === 'REVIEW_SUBMITTED' || action === 'TASK_APPROVED' || action === 'TASK_REJECTED' || action === 'TASK_CHANGES_REQUESTED') {
+    return (
+      <div className="space-y-1.5 text-xs">
+        {metadata.decision && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Decision:</span>
+            <Badge 
+              variant="outline" 
+              className={cn(
+                "text-xs font-medium",
+                metadata.decision === 'APPROVE' && 'border-emerald-500/50 text-emerald-500',
+                metadata.decision === 'REJECT' && 'border-red-500/50 text-red-500',
+                metadata.decision === 'REQUEST_CHANGES' && 'border-amber-500/50 text-amber-500',
+              )}
+            >
+              {formatDecision(metadata.decision)}
+            </Badge>
+          </div>
+        )}
+        {metadata.previousState && metadata.currentState && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Status:</span>
+            <Badge variant="outline" className="text-xs font-normal">
+              {formatState(metadata.previousState)}
+            </Badge>
+            <span className="text-muted-foreground">→</span>
+            <Badge variant="outline" className="text-xs font-normal">
+              {formatState(metadata.currentState)}
+            </Badge>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (action === 'REVIEW_DECISION_CHANGED') {
+    return (
+      <div className="space-y-1.5 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">Changed:</span>
+          <Badge variant="outline" className="text-xs font-normal">
+            {formatState(metadata.previousDecision)}
+          </Badge>
+          <span className="text-muted-foreground">→</span>
+          <Badge variant="outline" className="text-xs font-normal">
+            {formatState(metadata.newDecision)}
+          </Badge>
+        </div>
+      </div>
+    )
+  }
+
+  if (action === 'TASK_UPDATED' && metadata.updates) {
+    const updates = Array.isArray(metadata.updates) ? metadata.updates : []
+    return (
+      <div className="space-y-1.5 text-xs">
+        <span className="text-muted-foreground">Updated fields:</span>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {updates.map((field: string) => (
+            <Badge key={field} variant="secondary" className="text-xs font-normal">
+              {field.replace(/([A-Z])/g, ' $1').trim()}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Default: show remaining fields nicely
+  const displayEntries = Object.entries(metadata).filter(
+    ([key]) => !hiddenFields.includes(key)
+  )
+
+  if (displayEntries.length === 0) return null
+
+  return (
+    <dl className="space-y-1 text-xs">
+      {displayEntries.map(([key, value]) => (
+        <div key={key} className="flex gap-2">
+          <dt className="text-muted-foreground font-medium min-w-[80px]">
+            {key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim()}:
+          </dt>
+          <dd className="text-foreground">
+            {typeof value === 'boolean' 
+              ? (value ? 'Yes' : 'No')
+              : typeof value === 'object' 
+                ? JSON.stringify(value) 
+                : String(value)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
 }
 
 /**
@@ -127,22 +281,11 @@ function TimelineEntry({ log, isLast }: { log: AuditLogEntry; isLast: boolean })
           </time>
         </div>
 
-        {/* Metadata */}
+        {/* Metadata - Formatted */}
         {log.metadata && Object.keys(log.metadata).length > 0 && (
           <Card className="mt-2 bg-muted/30">
             <CardContent className="p-3">
-              <dl className="space-y-1 text-xs">
-                {Object.entries(log.metadata).map(([key, value]) => (
-                  <div key={key} className="flex gap-2">
-                    <dt className="text-muted-foreground font-medium min-w-[100px]">
-                      {key.replace(/([A-Z])/g, ' $1').trim()}:
-                    </dt>
-                    <dd className="font-mono text-foreground">
-                      {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <MetadataDisplay metadata={log.metadata} action={log.action} />
             </CardContent>
           </Card>
         )}
